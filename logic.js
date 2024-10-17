@@ -1,114 +1,112 @@
-// Store our API endpoint inside queryUrl
-let queryUrl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
+// URLs for GeoJSON data (Earthquakes and Tectonic Plates)
+let earthquakeUrl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson";
+let tectonicPlatesUrl = "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json";
 
-let query2 = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson"
-
-// Perform a GET request to the query URL
-d3.json(queryUrl). then(function (data) {
-  // Once we get a response, send the data.features object to the createFeatures function
-  createFeatures(data.features);
+// Base Maps
+let satellite = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap"
 });
 
-function createFeatures(earthquakeData) {
+let grayscale = L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap contributors"
+});
 
+let outdoors = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap contributors"
+});
 
-  // Give each feature a popup describing the place and time of the earthquake
-  function onEachFeature(feature, layer) {
-    layer.bindPopup("<h3>" + feature.properties.place +
-      "</h3><hr><p>" + new Date(feature.properties.time) + "</p>" +
-      "</h3><hr><p>Magnitude: " + feature.properties.mag + "</p>");
-  }
+// Map Object
+let myMap = L.map("map", {
+    center: [37.09, -95.71],
+    zoom: 3,
+    layers: [satellite]
+});
 
-  
+// Layer control for base maps
+let baseMaps = {
+    "Satellite": satellite,
+    "Grayscale": grayscale,
+    "Outdoors": outdoors
+};
 
-  // Create a GeoJSON layer containing the features array on the earthquakeData object
-  // Run the onEachFeature function once for each piece of data in the array
-  let earthquakes = L.geoJSON(earthquakeData, {
-    onEachFeature: onEachFeature,
-    pointToLayer: function (feature, latlng) {
-      let color;
-      let r = 255;
-      let g = Math.floor(255-80*feature.properties.mag);
-      let b = Math.floor(255-80*feature.properties.mag);
-      color= "rgb("+r+" ,"+g+","+ b+")"
-      
-      let geojsonMarkerOptions = {
-        radius: 4*feature.properties.mag,
-        fillColor: color,
-        color: "black",
-        weight: 1,
-        opacity: 1,
-        fillOpacity: 0.8
-      };
-      return L.circleMarker(latlng, geojsonMarkerOptions);
-    }
-  });
+// Placeholder for overlay layers
+let earthquakes = new L.LayerGroup();
+let tectonicPlates = new L.LayerGroup();
 
+// Overlay control
+let overlayMaps = {
+    "Earthquakes": earthquakes,
+    "Tectonic Plates": tectonicPlates
+};
 
-  // Sending our earthquakes layer to the createMap function
-  createMap(earthquakes);
-  
+// Add layer control to map
+L.control.layers(baseMaps, overlayMaps, { collapsed: false }).addTo(myMap);
+
+// Function to get color based on earthquake depth
+function getColor(depth) {
+    return depth > 90 ? "#ea2c2c" : // Deep
+           depth > 70 ? "#ea822c" :
+           depth > 50 ? "#ee9c00" :
+           depth > 30 ? "#eecc00" :
+           "#d4ee00"; // Shallow
 }
 
-function createMap(earthquakes) {
+// Fetch and visualize earthquake data
+d3.json(earthquakeUrl).then(function (data) {
+    L.geoJSON(data, {
+        pointToLayer: function (feature, latlng) {
+            let depth = feature.geometry.coordinates[2]; // Depth from coordinates
+            let color = getColor(depth);
+            let geojsonMarkerOptions = {
+                radius: 4 * feature.properties.mag,
+                fillColor: color,
+                color: "black",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            };
+            return L.circleMarker(latlng, geojsonMarkerOptions);
+        },
+        onEachFeature: function (feature, layer) {
+            let depth = feature.geometry.coordinates[2]; // Depth from coordinates
+            layer.bindPopup(
+                `<h3>${feature.properties.place}</h3><hr>
+                 <p>${new Date(feature.properties.time)}</p>
+                 <p>Magnitude: ${feature.properties.mag}</p>
+                 <p>Depth: ${depth} km</p>` // Added depth to tooltip
+            );
+        }
+    }).addTo(earthquakes);
+    earthquakes.addTo(myMap);
+});
 
-  // Define streetmap and darkmap layers
-  let streetmap = L.tileLayer("https://api.mapbox.com/styles/v1/mapbox/outdoors-v10/tiles/256/{z}/{x}/{y}?" +
-    "access_token=pk.eyJ1Ijoia2pnMzEwIiwiYSI6ImNpdGRjbWhxdjAwNG0yb3A5b21jOXluZTUifQ." +
-    "T6YbdDixkOBWH_k9GbS8JQ");
+// Fetch and visualize tectonic plate data from GitHub
+d3.json(tectonicPlatesUrl).then(function (data) {
+    L.geoJSON(data, {
+        style: {
+            color: "orange",
+            weight: 2
+        }
+    }).addTo(tectonicPlates);
+    tectonicPlates.addTo(myMap);
+});
 
-  // Create a baseMaps object
-  let baseMaps = {
-    "Street Map": streetmap
-  };
+// Add a legend to the map
+let legend = L.control({ position: "bottomright" });
 
-  // Create overlay object to hold our overlay
-  let overlayMaps = {
-    Earthquakes: earthquakes
-  };
+legend.onAdd = function () {
+    let div = L.DomUtil.create("div", "info legend");
+    let depths = [0, 30, 50, 70, 90];
+    
+    div.innerHTML = "<strong>Depth (km)</strong><br>";
 
-  // Create our map, giving it the streetmap and earthquakes layers to display on load
-  let myMap = L.map("map", {
-    center: [
-      37.09, -95.71
-    ],
-    zoom: 5,
-    layers: [streetmap, earthquakes]
-  });
-
-
-  // Create a legend to display information
-  function getColor(magnitude) {
-    return magnitude > 8 ? '#800026' :
-           magnitude > 7 ? '#BD0026' :
-           magnitude > 6 ? '#E31A1C' :
-           magnitude > 5 ? '#FC4E2A' :
-           magnitude > 4 ? '#FD8D3C' :
-           magnitude > 3 ? '#FEB24C' :
-           magnitude > 2 ? '#FED976' :
-                           '#FFEDA0';
-  }
-  
-  let legend = L.control({ position: 'bottomright' });
-  
-  legend.onAdd = function (map) {
-    let div = L.DomUtil.create('div', 'info legend'),
-        grades = [0, 1, 2, 3, 4, 5, 6, 7, 8],
-        labels = [];
-  
-    div.innerHTML += 'Magnitude<br><hr>';
-  
-    // Loop through the intervals to generate colored labels
-    for (let i = 0; i < grades.length; i++) {
-      div.innerHTML +=
-        '<i style="background:' + getColor(grades[i] + 1) + '">&nbsp&nbsp&nbsp&nbsp</i> ' +
-        grades[i] + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
+    // Loop through our depth intervals and generate a label with a colored square for each interval
+    for (let i = 0; i < depths.length; i++) {
+        div.innerHTML +=
+            '<i style="background:' + getColor(depths[i] + 1) + '">&nbsp;&nbsp;&nbsp;&nbsp;</i> ' +
+            depths[i] + (depths[i + 1] ? '&ndash;' + depths[i + 1] + '<br>' : '+');
     }
-  
     return div;
-  };
-  
-  legend.addTo(myMap);
-  
+};
 
-}
+legend.addTo(myMap);

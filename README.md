@@ -25,3 +25,4 @@ The USGS is interested in building a new set of tools that will allow them to vi
 - Module 15 resources (example problems, group work)
 - lecture videos (zoom)
 - Module 15 additional resource links
+- Data on tectonic plates found at https://github.com/fraxen/tectonicplates
